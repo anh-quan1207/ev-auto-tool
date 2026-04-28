@@ -1,0 +1,107 @@
+import XLSX from "xlsx";
+
+const HEADER_MAP = {
+  name: "Họ tên (tiếng Anh)",
+  dob: "Ngày sinh",
+  passport: "Số giấy tờ",
+  evNumber: "Số Visa điện tử",
+  expiryDate: "Ngày hết hạn",
+  issueDate: "Ngày hiệu lực"
+};
+
+function padPeopleCount(value) {
+  return String(value).padStart(2, "0");
+}
+
+function toFilenameDate(value) {
+  return value.replace(/\//g, "-");
+}
+
+function getLastThree(value) {
+  const digits = value.replace(/\D/g, "");
+  return digits.slice(-3) || "000";
+}
+
+function resolveCellMap(headerRow) {
+  const cellMap = {};
+
+  Object.entries(HEADER_MAP).forEach(([key, header]) => {
+    const indexes = headerRow
+      .map((value, index) => ({ value: String(value).trim(), index }))
+      .filter((entry) => entry.value === header)
+      .map((entry) => entry.index);
+
+    if (indexes.length > 0) {
+      cellMap[key] = key === "expiryDate" ? indexes[indexes.length - 1] : indexes[0];
+    }
+  });
+
+  return cellMap;
+}
+
+function setCellValue(worksheet, rowIndexZeroBased, columnIndexZeroBased, value) {
+  if (columnIndexZeroBased === undefined) {
+    return;
+  }
+
+  const address = XLSX.utils.encode_cell({
+    r: rowIndexZeroBased,
+    c: columnIndexZeroBased
+  });
+
+  const existing = worksheet[address] ?? {};
+  worksheet[address] = {
+    ...existing,
+    t: "s",
+    v: value ?? "",
+    w: value ?? ""
+  };
+}
+
+function loadWorkbookForExport(templateBuffer) {
+  return XLSX.read(templateBuffer, {
+    type: "buffer",
+    cellStyles: true,
+    cellNF: true,
+    cellDates: false
+  });
+}
+
+export async function exportGroupedResults(templateBuffer, groupedRecords) {
+  const outputs = [];
+
+  for (const group of groupedRecords) {
+    const workbook = loadWorkbookForExport(templateBuffer);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+    const headerRow = rows[0] ?? [];
+    const cellMap = resolveCellMap(headerRow);
+
+    group.records.forEach((record, index) => {
+      const rowIndex = index + 1;
+      setCellValue(worksheet, rowIndex, cellMap.name, record.name);
+      setCellValue(worksheet, rowIndex, cellMap.dob, record.dob);
+      setCellValue(worksheet, rowIndex, cellMap.passport, record.passport);
+      setCellValue(worksheet, rowIndex, cellMap.evNumber, record.evNumber);
+      setCellValue(worksheet, rowIndex, cellMap.expiryDate, record.expiryDate);
+      setCellValue(worksheet, rowIndex, cellMap.issueDate, record.issueDate);
+    });
+
+    const fileName = `EV ${group.entryType} ${padPeopleCount(group.records.length)}K (DY) ${getLastThree(group.records[0].evNumber)} - ${toFilenameDate(group.expiryDate)}.xlsx`;
+    const buffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx"
+    });
+
+    outputs.push({
+      fileName,
+      buffer,
+      entryType: group.entryType,
+      expiryDate: group.expiryDate,
+      count: group.records.length
+    });
+  }
+
+  return outputs;
+}
