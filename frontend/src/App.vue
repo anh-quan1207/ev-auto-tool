@@ -344,6 +344,14 @@ onBeforeUnmount(() => {
         <p class="sidebar-label">Đổi phương thức</p>
         <button
           class="sidebar-btn"
+          :class="{ active: currentView === 'guide' }"
+          type="button"
+          @click="goTo('guide')"
+        >
+          Hướng dẫn sử dụng
+        </button>
+        <button
+          class="sidebar-btn"
           :class="{ active: currentView === 'manual' }"
           type="button"
           @click="goTo('manual')"
@@ -362,7 +370,124 @@ onBeforeUnmount(() => {
     </aside>
 
     <main class="page-shell">
-      <template v-if="currentView === 'manual'">
+      <template v-if="currentView === 'guide'">
+        <section class="page-intro panel">
+          <div class="compact-head">
+            <h1>Hướng dẫn sử dụng</h1>
+            <span>Chọn đúng luồng theo nhu cầu công việc. Luồng PDF phù hợp khi đã có sẵn PDF visa. Luồng CMS phù hợp khi cần hệ thống tự tra cứu và tải PDF.</span>
+          </div>
+        </section>
+
+        <section class="stack-layout">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>1. Luồng xử lý từ PDF</h2>
+              <span>Dùng khi bạn đã có sẵn các file PDF visa.</span>
+            </div>
+
+            <div class="guide-list">
+              <article>
+                <strong>Bước 1</strong>
+                <span>Chuẩn bị 1 file template Excel định dạng <code>.xlsx</code>.</span>
+              </article>
+              <article>
+                <strong>Bước 2</strong>
+                <span>Chuẩn bị 1 hoặc nhiều file PDF visa cần xử lý.</span>
+              </article>
+              <article>
+                <strong>Bước 3</strong>
+                <span>Vào mục <code>Xử lý từ PDF</code>, chọn template và chọn các file PDF.</span>
+              </article>
+              <article>
+                <strong>Bước 4</strong>
+                <span>Bấm <code>Upload dữ liệu</code>.</span>
+              </article>
+              <article>
+                <strong>Bước 5</strong>
+                <span>Bấm <code>Bắt đầu xử lý</code> và chờ hệ thống parse dữ liệu.</span>
+              </article>
+              <article>
+                <strong>Bước 6</strong>
+                <span>Kiểm tra mục <code>Dữ liệu parse</code> và <code>Visa bị bỏ qua</code>.</span>
+              </article>
+              <article>
+                <strong>Bước 7</strong>
+                <span>Tải file Excel ở mục <code>File kết quả</code>.</span>
+              </article>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>2. Luồng tự động từ CMS</h2>
+              <span>Dùng khi cần hệ thống tự tra cứu passport trên CMS và tải PDF.</span>
+            </div>
+
+            <div class="guide-list">
+              <article>
+                <strong>Bước 1</strong>
+                <span>Chuẩn bị file <code>passport.txt</code>, mỗi dòng là 1 số passport.</span>
+              </article>
+              <article>
+                <strong>Bước 2</strong>
+                <span>Chuẩn bị 1 file template Excel định dạng <code>.xlsx</code>.</span>
+              </article>
+              <article>
+                <strong>Bước 3</strong>
+                <span>Vào mục <code>Tự động từ CMS</code>, chọn <code>passport.txt</code> và template.</span>
+              </article>
+              <article>
+                <strong>Bước 4</strong>
+                <span>Bấm <code>Upload dữ liệu CMS</code>.</span>
+              </article>
+              <article>
+                <strong>Bước 5</strong>
+                <span>Bấm <code>Mở CMS</code>, sau đó tự đăng nhập và nhập captcha trên cửa sổ CMS.</span>
+              </article>
+              <article>
+                <strong>Bước 6</strong>
+                <span>Sau khi đăng nhập xong, quay lại web và bấm <code>Tôi đã đăng nhập xong</code>.</span>
+              </article>
+              <article>
+                <strong>Bước 7</strong>
+                <span>Bấm <code>Bắt đầu xử lý CMS</code>. Hệ thống sẽ tự search passport, tải PDF, parse dữ liệu và xuất Excel.</span>
+              </article>
+              <article>
+                <strong>Bước 8</strong>
+                <span>Kiểm tra các mục <code>PDF đã tải từ CMS</code>, <code>Dữ liệu parse từ PDF CMS</code>, <code>File Excel kết quả</code> và <code>Visa bị bỏ qua</code>.</span>
+              </article>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>3. Lưu ý quan trọng</h2>
+              <span>Đây là các điểm cần nhớ khi dùng hệ thống.</span>
+            </div>
+
+            <div class="guide-list">
+              <article>
+                <strong>Template</strong>
+                <span>Chỉ dùng file <code>.xlsx</code>. Không dùng <code>.xls</code>.</span>
+              </article>
+              <article>
+                <strong>File tạm</strong>
+                <span>Upload, PDF tải từ CMS và file Excel kết quả đều chỉ được giữ tạm thời để tránh đầy bộ nhớ.</span>
+              </article>
+              <article>
+                <strong>Kiểm tra dữ liệu</strong>
+                <span>Nên xem kỹ phần preview trước khi tải file kết quả.</span>
+              </article>
+              <article>
+                <strong>CMS automation</strong>
+                <span>Luồng CMS hiện phù hợp nhất khi có 1 người vận hành tại một thời điểm.</span>
+              </article>
+            </div>
+          </div>
+        </section>
+      </template>
+
+      <template v-else-if="currentView === 'manual'">
         <section class="page-intro panel">
           <div class="compact-head">
             <h1>Xử lý từ PDF</h1>
