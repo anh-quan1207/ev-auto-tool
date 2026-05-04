@@ -112,22 +112,15 @@ route.post(
 route.post(
   "/cms/upload",
   upload.fields([
-    { name: "passport", maxCount: 1 },
     { name: "template", maxCount: 1 }
   ]),
   async (req, res) => {
-    const rawPassportFile = req.files?.passport?.[0];
     const rawTemplateFile = req.files?.template?.[0];
+    const passportText = String(req.body?.passportText ?? "").trim();
 
-    if (!rawPassportFile || !rawTemplateFile) {
+    if (!passportText || !rawTemplateFile) {
       return res.status(400).json({
-        message: "Can upload passport.txt va template.xlsx"
-      });
-    }
-
-    if (path.extname(rawPassportFile.originalname).toLowerCase() !== ".txt") {
-      return res.status(400).json({
-        message: "Passport phai la file .txt"
+        message: "Can nhap danh sach passport va upload template.xlsx"
       });
     }
 
@@ -138,8 +131,12 @@ route.post(
     }
 
     const passportFile = {
-      ...toUploadDescriptor(rawPassportFile),
-      buffer: rawPassportFile.buffer
+      ...toUploadDescriptor({
+        originalname: "passport-input.txt",
+        buffer: Buffer.from(passportText, "utf8"),
+        mimetype: "text/plain"
+      }),
+      buffer: Buffer.from(passportText, "utf8")
     };
     const templateFile = {
       ...toUploadDescriptor(rawTemplateFile),
@@ -250,7 +247,7 @@ route.post("/start-cms-job", async (req, res) => {
 
   if (!files?.passport?.id || !files?.template?.id) {
     return res.status(400).json({
-      message: "Thieu passport.txt hoac template.xlsx cho luong CMS"
+      message: "Thieu danh sach passport hoac template.xlsx cho luong CMS"
     });
   }
 

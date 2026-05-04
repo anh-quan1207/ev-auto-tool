@@ -281,7 +281,8 @@ a {
     font-weight: 700;
 }
 
-.file-field input {
+.file-field input,
+.file-field textarea {
     width: 100%;
     padding: 13px 14px;
     border-radius: 14px;
@@ -293,15 +294,22 @@ a {
         background 150ms ease;
 }
 
-.file-field input:hover {
+.file-field input:hover,
+.file-field textarea:hover {
     border-color: #aac1d8;
 }
 
-.file-field input:focus {
+.file-field input:focus,
+.file-field textarea:focus {
     outline: none;
     border-color: #7aa9d3;
     box-shadow: 0 0 0 4px rgba(15, 94, 168, 0.12);
     background: #fff;
+}
+
+.file-field textarea {
+    min-height: 150px;
+    resize: vertical;
 }
 
 .file-field small {

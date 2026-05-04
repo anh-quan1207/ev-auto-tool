@@ -9,7 +9,7 @@ const pdfFiles = ref([]);
 const uploadPayload = ref(null);
 const job = ref(null);
 
-const cmsPassportFile = ref(null);
+const cmsPassportText = ref("");
 const cmsTemplateFile = ref(null);
 const cmsUploadPayload = ref(null);
 const cmsJob = ref(null);
@@ -32,7 +32,7 @@ const hasPdfs = computed(() => pdfFiles.value.length > 0);
 const canUpload = computed(() => hasTemplate.value && hasPdfs.value && !loading.value);
 const canStart = computed(() => Boolean(uploadPayload.value?.files?.pdfs?.length) && !loading.value);
 
-const hasCmsPassport = computed(() => Boolean(cmsPassportFile.value));
+const hasCmsPassport = computed(() => Boolean(cmsPassportText.value.trim()));
 const hasCmsTemplate = computed(() => Boolean(cmsTemplateFile.value));
 const canUploadCms = computed(() => hasCmsPassport.value && hasCmsTemplate.value && !loading.value);
 const canOpenCms = computed(() => Boolean(cmsUploadPayload.value?.files?.passport?.id) && !loading.value);
@@ -62,12 +62,6 @@ function onSingleFile(event, target) {
     templateFile.value = file;
     uploadPayload.value = null;
     job.value = null;
-  }
-
-  if (target === "cmsPassport") {
-    cmsPassportFile.value = file;
-    cmsUploadPayload.value = null;
-    cmsJob.value = null;
   }
 
   if (target === "cmsTemplate") {
@@ -148,7 +142,7 @@ async function uploadFiles() {
 
 async function uploadCmsFiles() {
   if (!hasCmsPassport.value || !hasCmsTemplate.value) {
-    errorMessage.value = "Cần chọn passport.txt và template.xlsx trước.";
+    errorMessage.value = "Cần nhập danh sách passport và chọn template.xlsx trước.";
     return;
   }
 
@@ -157,7 +151,7 @@ async function uploadCmsFiles() {
 
   try {
     const formData = new FormData();
-    formData.append("passport", cmsPassportFile.value);
+    formData.append("passportText", cmsPassportText.value);
     formData.append("template", cmsTemplateFile.value);
     const response = await axios.post("/api/cms/upload", formData);
     cmsUploadPayload.value = response.data;
@@ -426,7 +420,7 @@ onBeforeUnmount(() => {
             <div class="guide-list">
               <article>
                 <strong>Bước 1</strong>
-                <span>Chuẩn bị file <code>passport.txt</code>, mỗi dòng là 1 số passport.</span>
+                <span>Chuẩn bị danh sách số passport, mỗi passport nhập trên một dòng.</span>
               </article>
               <article>
                 <strong>Bước 2</strong>
@@ -434,7 +428,7 @@ onBeforeUnmount(() => {
               </article>
               <article>
                 <strong>Bước 3</strong>
-                <span>Vào mục <code>Tự động từ CMS</code>, chọn <code>passport.txt</code> và template.</span>
+                <span>Vào mục <code>Tự động từ CMS</code>, nhập danh sách passport và chọn template.</span>
               </article>
               <article>
                 <strong>Bước 4</strong>
@@ -669,9 +663,14 @@ onBeforeUnmount(() => {
 
             <div class="form-stack">
               <label class="file-field">
-                <span>passport.txt</span>
-                <input type="file" accept=".txt" @change="(event) => onSingleFile(event, 'cmsPassport')" />
-                <small>{{ cmsPassportFile?.name || "Chưa chọn file" }}</small>
+                <span>Danh sách passport</span>
+                <textarea
+                  v-model="cmsPassportText"
+                  rows="7"
+                  placeholder="Mỗi dòng nhập 1 số hộ chiếu, ví dụ:&#10;EQ1506876&#10;ER7943628"
+                  @input="cmsUploadPayload = null; cmsJob = null"
+                ></textarea>
+                <small>{{ hasCmsPassport ? `${cmsPassportText.trim().split(/\s+/).length} passport đã nhập` : "Chưa nhập passport" }}</small>
               </label>
 
               <label class="file-field">
@@ -688,7 +687,7 @@ onBeforeUnmount(() => {
             </div>
 
             <p v-if="!cmsUploadPayload" class="hint-text">
-              Chọn <strong>passport.txt</strong> và <strong>template.xlsx</strong>, sau đó upload để mở các bước tiếp theo.
+              Nhập danh sách passport và chọn <strong>template.xlsx</strong>, sau đó upload để mở các bước tiếp theo.
             </p>
 
             <div v-if="cmsUploadPayload" class="success-box cms-summary">

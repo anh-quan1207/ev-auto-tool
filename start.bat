@@ -31,6 +31,28 @@ echo Dang mo frontend...
 start "EV Auto Frontend" cmd /k "cd /d ""%~dp0frontend"" && npm run dev"
 
 echo.
+echo Dang doi backend san sang...
+set "BACKEND_READY="
+for /L %%I in (1,1,30) do (
+  powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "try { $r = Invoke-WebRequest -UseBasicParsing 'http://localhost:3001/health'; if ($r.StatusCode -ge 200) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
+  if not errorlevel 1 (
+    set "BACKEND_READY=1"
+    goto :wait_frontend
+  )
+  timeout /t 2 /nobreak >nul
+)
+
+:wait_frontend
+if not defined BACKEND_READY (
+  echo Backend chua san sang sau 60 giay.
+  echo Vui long xem cua so "EV Auto Backend" de kiem tra loi.
+  echo Neu thay bao cong 3001 dang bi dung, hay dong phien cu roi bam lai start.bat.
+  echo.
+  pause
+  exit /b 1
+)
+
 echo Dang doi frontend san sang...
 set "APP_READY="
 for /L %%I in (1,1,30) do (
