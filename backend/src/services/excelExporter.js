@@ -22,6 +22,21 @@ function getLastThree(value) {
   return digits.slice(-3) || "000";
 }
 
+function formatEvForExcel(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  const match = normalized.match(/^(\d+)\/EV$/);
+  return match ? `EV ${match[1]}` : normalized;
+}
+
+function formatDateTextForExcel(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  return normalized.startsWith("'") ? normalized : `'${normalized}`;
+}
+
 function resolveCellMap(headerRow) {
   const cellMap = {};
 
@@ -81,9 +96,9 @@ export async function exportGroupedResults(templateBuffer, groupedRecords) {
     group.records.forEach((record, index) => {
       const rowIndex = index + 1;
       setCellValue(worksheet, rowIndex, cellMap.name, record.name);
-      setCellValue(worksheet, rowIndex, cellMap.dob, record.dob);
+      setCellValue(worksheet, rowIndex, cellMap.dob, formatDateTextForExcel(record.dob));
       setCellValue(worksheet, rowIndex, cellMap.passport, record.passport);
-      setCellValue(worksheet, rowIndex, cellMap.evNumber, record.evNumber);
+      setCellValue(worksheet, rowIndex, cellMap.evNumber, formatEvForExcel(record.evNumber));
       setCellValue(worksheet, rowIndex, cellMap.expiryDate, record.expiryDate);
       setCellValue(worksheet, rowIndex, cellMap.issueDate, record.issueDate);
     });
