@@ -28,6 +28,15 @@ function formatEvForExcel(value) {
   return match ? `EV ${match[1]}` : normalized;
 }
 
+function formatDobForExcel(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  return normalized.startsWith("'") ? normalized : `'${normalized}`;
+}
+
 function resolveCellMap(headerRow) {
   const cellMap = {};
 
@@ -87,7 +96,7 @@ export async function exportGroupedResults(templateBuffer, groupedRecords) {
     group.records.forEach((record, index) => {
       const rowIndex = index + 1;
       setCellValue(worksheet, rowIndex, cellMap.name, record.name);
-      setCellValue(worksheet, rowIndex, cellMap.dob, record.dob);
+      setCellValue(worksheet, rowIndex, cellMap.dob, formatDobForExcel(record.dob));
       setCellValue(worksheet, rowIndex, cellMap.passport, record.passport);
       setCellValue(worksheet, rowIndex, cellMap.evNumber, formatEvForExcel(record.evNumber));
       setCellValue(worksheet, rowIndex, cellMap.expiryDate, record.expiryDate);

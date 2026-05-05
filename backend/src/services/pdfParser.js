@@ -43,11 +43,17 @@ function stripDiacritics(value) {
 }
 
 function findEntryType(text) {
-  if (/\bmultiple\b/i.test(text) || /\bnhieu lan\b/i.test(text)) {
+  const normalized = stripDiacritics(text).toLowerCase();
+
+  if (
+    /\bmultiple\b/i.test(text) ||
+    /\bnhieu lan\b/i.test(normalized) ||
+    /\bsu dung mot\/nhieu lan\b/i.test(normalized)
+  ) {
     return "NL";
   }
 
-  if (/\bsingle\b/i.test(text) || /\bmot lan\b/i.test(text)) {
+  if (/\bsingle\b/i.test(text) || /\bmot lan\b/i.test(normalized)) {
     return "1L";
   }
 
