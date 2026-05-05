@@ -45,15 +45,23 @@ function stripDiacritics(value) {
 function findEntryType(text) {
   const normalized = stripDiacritics(text).toLowerCase();
 
+  const entryValueMatch = normalized.match(/su dung mot\/nhieu lan\s*(single|multiple)/i);
+  if (entryValueMatch?.[1]) {
+    return entryValueMatch[1].toLowerCase() === "single" ? "1L" : "NL";
+  }
+
+  if (/\bsingle\b/i.test(text)) {
+    return "1L";
+  }
+
   if (
     /\bmultiple\b/i.test(text) ||
-    /\bnhieu lan\b/i.test(normalized) ||
-    /\bsu dung mot\/nhieu lan\b/i.test(normalized)
+    /\bnhieu lan\b/i.test(normalized)
   ) {
     return "NL";
   }
 
-  if (/\bsingle\b/i.test(text) || /\bmot lan\b/i.test(normalized)) {
+  if (/\bmot lan\b/i.test(normalized)) {
     return "1L";
   }
 
