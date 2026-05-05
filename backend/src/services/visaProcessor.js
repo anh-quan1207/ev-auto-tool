@@ -1,5 +1,6 @@
 import { parseVisaPdf } from "./pdfParser.js";
 import { exportGroupedResults } from "./excelExporter.js";
+import { dedupeRecordsByEvNumber } from "./recordUtils.js";
 
 function parseComparableDate(value) {
   if (!value) {
@@ -82,7 +83,17 @@ export async function runVisaJob({ templateBuffer, pdfFiles, onProgress }) {
     parsedRecords.push(record);
   }
 
-  const groupedRecords = groupRecords(parsedRecords);
+  const { uniqueRecords, duplicateRecords } = dedupeRecordsByEvNumber(parsedRecords);
+  duplicateRecords.forEach((record) => {
+    skippedRecords.push({
+      sourceName: record.sourceName,
+      passport: record.passport,
+      evNumber: record.evNumber,
+      reason: "Trung so EV, da bo qua ban ghi lap"
+    });
+  });
+
+  const groupedRecords = groupRecords(uniqueRecords);
   onProgress({
     progress: 85,
     currentPassport: null,
@@ -92,7 +103,7 @@ export async function runVisaJob({ templateBuffer, pdfFiles, onProgress }) {
   const outputs = await exportGroupedResults(templateBuffer, groupedRecords);
 
   return {
-    parsedRecords,
+    parsedRecords: uniqueRecords,
     skippedRecords,
     groupedRecords,
     outputs

@@ -5,6 +5,7 @@ import { exportGroupedResults } from "./excelExporter.js";
 import { parsePassportText } from "./passportService.js";
 import { parseVisaPdf } from "./pdfParser.js";
 import { getCmsPageOrThrow } from "./cmsSessionService.js";
+import { dedupeRecordsByEvNumber } from "./recordUtils.js";
 
 function parseComparableDate(value) {
   if (!value) {
@@ -193,7 +194,17 @@ export async function runCmsAutomationJob({ passportContent, templateBuffer, onP
     }
   }
 
-  const groupedRecords = groupRecords(parsedRecords);
+  const { uniqueRecords, duplicateRecords } = dedupeRecordsByEvNumber(parsedRecords);
+  duplicateRecords.forEach((record) => {
+    skippedRecords.push({
+      sourceName: record.sourceName,
+      passport: record.passport,
+      evNumber: record.evNumber,
+      reason: "Trung so EV, da bo qua ban ghi lap"
+    });
+  });
+
+  const groupedRecords = groupRecords(uniqueRecords);
   onProgress({
     progress: 90,
     currentPassport: null,
@@ -205,7 +216,7 @@ export async function runCmsAutomationJob({ passportContent, templateBuffer, onP
   return {
     passports,
     searchResults,
-    parsedRecords,
+    parsedRecords: uniqueRecords,
     skippedRecords,
     groupedRecords,
     outputs,
