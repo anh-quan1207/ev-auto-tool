@@ -82,32 +82,37 @@ function loadWorkbookForExport(templateBuffer) {
   });
 }
 
-export async function exportGroupedResults(templateBuffer, groupedRecords) {
-  const outputs = [];
+function createWorkbookBuffer(templateBuffer, records) {
+  const workbook = loadWorkbookForExport(templateBuffer);
+  const sheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+  const headerRow = rows[0] ?? [];
+  const cellMap = resolveCellMap(headerRow);
 
-  for (const group of groupedRecords) {
-    const workbook = loadWorkbookForExport(templateBuffer);
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
-    const headerRow = rows[0] ?? [];
-    const cellMap = resolveCellMap(headerRow);
+  records.forEach((record, index) => {
+    const rowIndex = index + 1;
+    setCellValue(worksheet, rowIndex, cellMap.name, record.name);
+    setCellValue(worksheet, rowIndex, cellMap.dob, formatDobForExcel(record.dob));
+    setCellValue(worksheet, rowIndex, cellMap.passport, record.passport);
+    setCellValue(worksheet, rowIndex, cellMap.evNumber, formatEvForExcel(record.evNumber));
+    setCellValue(worksheet, rowIndex, cellMap.expiryDate, record.expiryDate);
+    setCellValue(worksheet, rowIndex, cellMap.issueDate, record.issueDate);
+  });
 
-    group.records.forEach((record, index) => {
-      const rowIndex = index + 1;
-      setCellValue(worksheet, rowIndex, cellMap.name, record.name);
-      setCellValue(worksheet, rowIndex, cellMap.dob, formatDobForExcel(record.dob));
-      setCellValue(worksheet, rowIndex, cellMap.passport, record.passport);
-      setCellValue(worksheet, rowIndex, cellMap.evNumber, formatEvForExcel(record.evNumber));
-      setCellValue(worksheet, rowIndex, cellMap.expiryDate, record.expiryDate);
-      setCellValue(worksheet, rowIndex, cellMap.issueDate, record.issueDate);
-    });
-
-    const fileName = `EV ${group.entryType} ${padPeopleCount(group.records.length)}K (DY) ${getLastThree(group.records[0].evNumber)} - ${toFilenameDate(group.expiryDate)}.xlsx`;
-    const buffer = XLSX.write(workbook, {
+  return XLSX.write(workbook, {
       type: "buffer",
       bookType: "xlsx"
-    });
+  });
+}
+
+export async function exportGroupedResults(templateBuffer, groupedRecords) {
+  const outputs = [];
+  const allRecords = groupedRecords.flatMap((group) => group.records);
+
+  for (const group of groupedRecords) {
+    const fileName = `EV ${group.entryType} ${padPeopleCount(group.records.length)}K (DY) ${getLastThree(group.records[0].evNumber)} - ${toFilenameDate(group.expiryDate)}.xlsx`;
+    const buffer = createWorkbookBuffer(templateBuffer, group.records);
 
     outputs.push({
       fileName,
@@ -115,6 +120,16 @@ export async function exportGroupedResults(templateBuffer, groupedRecords) {
       entryType: group.entryType,
       expiryDate: group.expiryDate,
       count: group.records.length
+    });
+  }
+
+  if (allRecords.length > 0) {
+    outputs.push({
+      fileName: `EV TONG HOP ${padPeopleCount(allRecords.length)}K (DY) ${getLastThree(allRecords[0].evNumber)}.xlsx`,
+      buffer: createWorkbookBuffer(templateBuffer, allRecords),
+      entryType: "ALL",
+      expiryDate: "",
+      count: allRecords.length
     });
   }
 
