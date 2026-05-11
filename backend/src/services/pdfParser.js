@@ -38,30 +38,56 @@ function normalizeDate(value) {
   return value.trim();
 }
 
+function extractDates(value) {
+  return [...String(value ?? "").matchAll(/\d{1,2}[\/.-]\d{1,2}[\/.-]\d{4}/g)].map((match) =>
+    normalizeDate(match[0])
+  );
+}
+
 function stripDiacritics(value) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
+function isLabelValue(value) {
+  const normalized = stripDiacritics(String(value ?? "")).toLowerCase().trim();
+  if (!normalized) {
+    return true;
+  }
+
+  return [
+    "full name",
+    "date of birth",
+    "passport",
+    "passport number",
+    "good for entry valid from",
+    "until",
+    "date of expiry"
+  ].includes(normalized);
+}
+
 function findEntryType(text) {
   const normalized = stripDiacritics(text).toLowerCase();
+  const valueText = normalized
+    .replace(/good for single\/multiple entries/g, " ")
+    .replace(/single\/multiple/g, " ");
 
-  const entryValueMatch = normalized.match(/su dung mot\/nhieu lan\s*(single|multiple)/i);
+  const entryValueMatch = valueText.match(/su dung mot\/nhieu lan\s*(single|multiple)/i);
   if (entryValueMatch?.[1]) {
     return entryValueMatch[1].toLowerCase() === "single" ? "1L" : "NL";
   }
 
-  if (/\bsingle\b/i.test(text)) {
+  if (/\bsingle\b/i.test(valueText)) {
     return "1L";
   }
 
   if (
-    /\bmultiple\b/i.test(text) ||
-    /\bnhieu lan\b/i.test(normalized)
+    /\bmultiple\b/i.test(valueText) ||
+    /\bnhieu lan\b/i.test(valueText)
   ) {
     return "NL";
   }
 
-  if (/\bmot lan\b/i.test(normalized)) {
+  if (/\bmot lan\b/i.test(valueText)) {
     return "1L";
   }
 
@@ -78,10 +104,60 @@ function extractEvNumber(text) {
   ]).toUpperCase();
 }
 
+function parseTrailingValueBlock(text) {
+  const lines = text
+    .split("\n")
+    .map((line) => normalizeText(line))
+    .filter(Boolean);
+
+  const evIndex = lines.findIndex((line) => /\d+\/EV\b/i.test(line));
+  if (evIndex < 0) {
+    return {};
+  }
+
+  const evNumber = lines[evIndex].match(/\d+\/EV\b/i)?.[0] ?? "";
+  const codeIndex = lines.findIndex((line, index) => index > evIndex && /^E\d{6}[A-Z0-9]+$/i.test(line));
+  const dateIndex = lines.findIndex((line, index) => index > codeIndex && extractDates(line).length >= 2);
+  const entryIndex = lines.findIndex((line, index) => index > dateIndex && /\b(single|multiple)\b/i.test(line));
+
+  const validDates = dateIndex >= 0 ? extractDates(lines[dateIndex]) : [];
+  const passportExpiryLine = entryIndex >= 0 ? lines[entryIndex + 4] ?? "" : "";
+  const passportExpiryMatch = passportExpiryLine.match(/^([A-Z0-9]+?)(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{4})$/i);
+
+  return {
+    evNumber: evNumber.toUpperCase(),
+    issueDate: validDates[0] ?? "",
+    expiryDate: validDates[1] ?? "",
+    entryType: entryIndex >= 0 ? findEntryType(lines[entryIndex]) : "",
+    name: entryIndex >= 0 ? lines[entryIndex + 1] ?? "" : "",
+    dob: entryIndex >= 0 ? normalizeDate(lines[entryIndex + 2] ?? "") : "",
+    passport: passportExpiryMatch ? passportExpiryMatch[1].toUpperCase() : ""
+  };
+}
+
+function mergeFallbackRecord(record, fallback) {
+  const merged = { ...record };
+  for (const field of ["name", "dob", "passport", "issueDate", "expiryDate", "entryType"]) {
+    if (isLabelValue(merged[field]) && fallback[field]) {
+      merged[field] = fallback[field];
+    }
+  }
+
+  if (fallback.entryType) {
+    merged.entryType = fallback.entryType;
+  }
+
+  if (fallback.evNumber && !/\/EV\b/i.test(merged.evNumber)) {
+    merged.evNumber = fallback.evNumber;
+  }
+
+  return merged;
+}
+
 function parseFromText(text, sourceName) {
   const plainText = stripDiacritics(text).toLowerCase();
 
-  return {
+  const record = {
     sourceName,
     name: extractByPatterns(text, [
       /HỌ TÊN\s*[:\-]?\s*(.+)/i,
@@ -125,6 +201,8 @@ function parseFromText(text, sourceName) {
     ),
     entryType: findEntryType(plainText)
   };
+
+  return mergeFallbackRecord(record, parseTrailingValueBlock(text));
 }
 
 export async function parseVisaPdf(buffer, sourceName) {

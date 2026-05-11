@@ -1,16 +1,15 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import axios from "axios";
+import { PDFDocument } from "pdf-lib";
 
 const currentView = ref("cms");
 
-const templateFile = ref(null);
 const pdfFiles = ref([]);
 const uploadPayload = ref(null);
 const job = ref(null);
 
 const cmsPassportText = ref("");
-const cmsTemplateFile = ref(null);
 const cmsUploadPayload = ref(null);
 const cmsJob = ref(null);
 const cmsStatus = ref({
@@ -22,19 +21,19 @@ const cmsStatus = ref({
 });
 
 const loading = ref(false);
+const printing = ref(false);
 const errorMessage = ref("");
 const statusTimer = ref(null);
 const cmsStatusTimer = ref(null);
 const cmsJobTimer = ref(null);
 
-const hasTemplate = computed(() => Boolean(templateFile.value));
 const hasPdfs = computed(() => pdfFiles.value.length > 0);
-const canUpload = computed(() => hasTemplate.value && hasPdfs.value && !loading.value);
+const canUpload = computed(() => hasPdfs.value && !loading.value);
+const canPrintPdfs = computed(() => hasPdfs.value && !printing.value);
 const canStart = computed(() => Boolean(uploadPayload.value?.files?.pdfs?.length) && !loading.value);
 
 const hasCmsPassport = computed(() => Boolean(cmsPassportText.value.trim()));
-const hasCmsTemplate = computed(() => Boolean(cmsTemplateFile.value));
-const canUploadCms = computed(() => hasCmsPassport.value && hasCmsTemplate.value && !loading.value);
+const canUploadCms = computed(() => hasCmsPassport.value && !loading.value);
 const canOpenCms = computed(() => Boolean(cmsUploadPayload.value?.files?.passport?.id) && !loading.value);
 const canConfirmLogin = computed(
   () => cmsStatus.value.status === "awaiting_login" || cmsStatus.value.status === "opening"
@@ -53,22 +52,6 @@ const cmsDownloadedFiles = computed(() =>
 function goTo(view) {
   currentView.value = view;
   errorMessage.value = "";
-}
-
-function onSingleFile(event, target) {
-  const file = event.target.files?.[0] ?? null;
-
-  if (target === "template") {
-    templateFile.value = file;
-    uploadPayload.value = null;
-    job.value = null;
-  }
-
-  if (target === "cmsTemplate") {
-    cmsTemplateFile.value = file;
-    cmsUploadPayload.value = null;
-    cmsJob.value = null;
-  }
 }
 
 function onMultiFiles(event) {
@@ -113,12 +96,105 @@ function refreshPage() {
   window.location.reload();
 }
 
-async function uploadFiles() {
-  if (!hasTemplate.value) {
-    errorMessage.value = "Cần chọn template.xlsx trước.";
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+async function printSelectedPdfs() {
+  if (!hasPdfs.value) {
+    errorMessage.value = "Cần chọn ít nhất 1 file PDF để in.";
     return;
   }
 
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    errorMessage.value = "Trình duyệt đang chặn cửa sổ in. Hãy cho phép popup cho trang này rồi bấm in lại.";
+    return;
+  }
+
+  printing.value = true;
+  errorMessage.value = "";
+  printWindow.document.write(`
+    <!doctype html>
+    <html>
+      <head>
+        <title>Đang chuẩn bị in PDF</title>
+        <style>
+          body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            font-family: Arial, sans-serif;
+            color: #17324d;
+            background: #f4f7fb;
+          }
+        </style>
+      </head>
+      <body>
+        <strong>Đang gộp ${pdfFiles.value.length} PDF để in...</strong>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+
+  try {
+    const mergedPdf = await PDFDocument.create();
+
+    for (const file of pdfFiles.value) {
+      const sourcePdf = await PDFDocument.load(await file.arrayBuffer(), {
+        ignoreEncryption: true
+      });
+      const pages = await mergedPdf.copyPages(sourcePdf, sourcePdf.getPageIndices());
+      pages.forEach((page) => mergedPdf.addPage(page));
+    }
+
+    const mergedBytes = await mergedPdf.save();
+    const pdfUrl = URL.createObjectURL(new Blob([mergedBytes], { type: "application/pdf" }));
+
+    printWindow.document.open();
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>In ${pdfFiles.value.length} file PDF</title>
+          <style>
+            html, body { margin: 0; width: 100%; height: 100%; }
+            iframe { width: 100%; height: 100%; border: 0; }
+          </style>
+        </head>
+        <body>
+          <iframe id="pdf-frame" src="${pdfUrl}" title="${escapeHtml(`In ${pdfFiles.value.length} file PDF`)}"></iframe>
+          <script>
+            var frame = document.getElementById("pdf-frame");
+            frame.addEventListener("load", function () {
+              setTimeout(function () {
+                setTimeout(function () {
+                  window.focus();
+                  window.print();
+                }, 500);
+              }, 300);
+            });
+          <\/script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    setTimeout(() => URL.revokeObjectURL(pdfUrl), 120000);
+  } catch (error) {
+    printWindow.close();
+    errorMessage.value = `Không thể gộp PDF để in: ${error.message}`;
+  } finally {
+    printing.value = false;
+  }
+}
+
+async function uploadFiles() {
   if (!hasPdfs.value) {
     errorMessage.value = "Cần chọn ít nhất 1 file PDF visa trước khi upload.";
     return;
@@ -129,7 +205,6 @@ async function uploadFiles() {
 
   try {
     const formData = new FormData();
-    formData.append("template", templateFile.value);
     pdfFiles.value.forEach((file) => formData.append("pdfs", file));
     const response = await axios.post("/api/upload", formData);
     uploadPayload.value = response.data;
@@ -141,8 +216,8 @@ async function uploadFiles() {
 }
 
 async function uploadCmsFiles() {
-  if (!hasCmsPassport.value || !hasCmsTemplate.value) {
-    errorMessage.value = "Cần nhập danh sách passport và chọn template.xlsx trước.";
+  if (!hasCmsPassport.value) {
+    errorMessage.value = "Cần nhập danh sách passport trước.";
     return;
   }
 
@@ -152,7 +227,6 @@ async function uploadCmsFiles() {
   try {
     const formData = new FormData();
     formData.append("passportText", cmsPassportText.value);
-    formData.append("template", cmsTemplateFile.value);
     const response = await axios.post("/api/cms/upload", formData);
     cmsUploadPayload.value = response.data;
   } catch (error) {
@@ -382,15 +456,15 @@ onBeforeUnmount(() => {
             <div class="guide-list">
               <article>
                 <strong>Bước 1</strong>
-                <span>Chuẩn bị 1 file template Excel định dạng <code>.xlsx</code>.</span>
-              </article>
-              <article>
-                <strong>Bước 2</strong>
                 <span>Chuẩn bị 1 hoặc nhiều file PDF visa cần xử lý.</span>
               </article>
               <article>
+                <strong>Bước 2</strong>
+                <span>Hệ thống sẽ tự dùng template Excel cố định đã chốt sẵn.</span>
+              </article>
+              <article>
                 <strong>Bước 3</strong>
-                <span>Vào mục <code>Xử lý từ PDF</code>, chọn template và chọn các file PDF.</span>
+                <span>Vào mục <code>Xử lý từ PDF</code> và chọn các file PDF.</span>
               </article>
               <article>
                 <strong>Bước 4</strong>
@@ -424,11 +498,11 @@ onBeforeUnmount(() => {
               </article>
               <article>
                 <strong>Bước 2</strong>
-                <span>Chuẩn bị 1 file template Excel định dạng <code>.xlsx</code>.</span>
+                <span>Hệ thống sẽ tự dùng template Excel cố định đã chốt sẵn.</span>
               </article>
               <article>
                 <strong>Bước 3</strong>
-                <span>Vào mục <code>Tự động từ CMS</code>, nhập danh sách passport và chọn template.</span>
+                <span>Vào mục <code>Tự động từ CMS</code> và nhập danh sách passport.</span>
               </article>
               <article>
                 <strong>Bước 4</strong>
@@ -462,7 +536,7 @@ onBeforeUnmount(() => {
             <div class="guide-list">
               <article>
                 <strong>Template</strong>
-                <span>Chỉ dùng file <code>.xlsx</code>. Không dùng <code>.xls</code>.</span>
+                <span>Template Excel đã được chốt cố định trong hệ thống, người dùng không cần upload lại.</span>
               </article>
               <article>
                 <strong>File tạm</strong>
@@ -493,16 +567,10 @@ onBeforeUnmount(() => {
           <div class="panel">
             <div class="panel-head">
               <h2>1. Chuẩn bị file</h2>
-              <span>Tải template Excel và các file PDF visa cần xử lý.</span>
+              <span>Chọn các file PDF visa cần xử lý. Template Excel đã được cấu hình cố định.</span>
             </div>
 
             <div class="form-stack">
-              <label class="file-field">
-                <span>Template Excel (.xlsx)</span>
-                <input type="file" accept=".xlsx" @change="(event) => onSingleFile(event, 'template')" />
-                <small>{{ templateFile?.name || "Chưa chọn file" }}</small>
-              </label>
-
               <label class="file-field">
                 <span>PDF visa</span>
                 <input type="file" accept=".pdf" multiple @change="onMultiFiles" />
@@ -511,13 +579,16 @@ onBeforeUnmount(() => {
             </div>
 
             <div class="action-row">
+              <button class="ghost-btn action-btn" :disabled="!canPrintPdfs" @click="printSelectedPdfs">
+                {{ printing ? "Đang mở PDF..." : "In PDF đã chọn" }}
+              </button>
               <button class="primary-btn action-btn" :disabled="!canUpload" @click="uploadFiles">
                 Upload dữ liệu
               </button>
             </div>
 
             <p v-if="!uploadPayload" class="hint-text">
-              Chọn template và ít nhất 1 PDF, sau đó bấm <strong>Upload dữ liệu</strong>.
+              Chọn ít nhất 1 PDF, sau đó bấm <strong>Upload dữ liệu</strong>. Template Excel sẽ được lấy tự động.
             </p>
 
             <p v-if="uploadPayload" class="success-box">Đã nhận file đầu vào. Có thể bắt đầu xử lý ngay.</p>
@@ -658,7 +729,7 @@ onBeforeUnmount(() => {
           <div class="panel">
             <div class="panel-head">
               <h2>1. Chuẩn bị dữ liệu CMS</h2>
-              <span>Tải danh sách passport và template Excel dùng cho luồng tự động.</span>
+              <span>Nhập danh sách passport dùng cho luồng tự động. Template Excel đã được cấu hình cố định.</span>
             </div>
 
             <div class="form-stack">
@@ -672,12 +743,6 @@ onBeforeUnmount(() => {
                 ></textarea>
                 <small>{{ hasCmsPassport ? `${cmsPassportText.trim().split(/\s+/).length} passport đã nhập` : "Chưa nhập passport" }}</small>
               </label>
-
-              <label class="file-field">
-                <span>Template Excel (.xlsx)</span>
-                <input type="file" accept=".xlsx" @change="(event) => onSingleFile(event, 'cmsTemplate')" />
-                <small>{{ cmsTemplateFile?.name || "Chưa chọn file" }}</small>
-              </label>
             </div>
 
             <div class="action-row">
@@ -687,7 +752,7 @@ onBeforeUnmount(() => {
             </div>
 
             <p v-if="!cmsUploadPayload" class="hint-text">
-              Nhập danh sách passport và chọn <strong>template.xlsx</strong>, sau đó upload để mở các bước tiếp theo.
+              Nhập danh sách passport, sau đó upload để mở các bước tiếp theo. Template Excel sẽ được lấy tự động.
             </p>
 
             <div v-if="cmsUploadPayload" class="success-box cms-summary">

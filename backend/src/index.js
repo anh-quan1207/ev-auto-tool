@@ -3,7 +3,7 @@ import path from "node:path";
 import express from "express";
 import cors from "cors";
 import multer from "multer";
-import { dataRoot, downloadsDir } from "./config/paths.js";
+import { dataRoot, defaultTemplatePath, downloadsDir } from "./config/paths.js";
 import { createJob, getJob, updateJob } from "./store/jobStore.js";
 import { getOutput, removeOutput, saveOutput } from "./store/outputStore.js";
 import { saveUpload, takeUpload } from "./store/uploadStore.js";
@@ -58,6 +58,14 @@ function materializeOutputs(outputs) {
   });
 }
 
+async function readDefaultTemplateBuffer() {
+  try {
+    return await fs.readFile(defaultTemplatePath);
+  } catch (error) {
+    throw new Error(`Khong doc duoc template mac dinh: ${defaultTemplatePath}`);
+  }
+}
+
 const route = {
   get(path, ...handlers) {
     app.get(path, ...handlers);
@@ -80,29 +88,14 @@ route.get("/health", (_req, res) => {
 route.post(
   "/upload",
   upload.fields([
-    { name: "template", maxCount: 1 },
     { name: "pdfs", maxCount: 100 }
   ]),
   (req, res) => {
-    const template = req.files?.template?.[0];
     const pdfs = req.files?.pdfs ?? [];
-
-    if (!template) {
-      return res.status(400).json({
-        message: "Can upload template.xlsx"
-      });
-    }
-
-    if (path.extname(template.originalname).toLowerCase() !== ".xlsx") {
-      return res.status(400).json({
-        message: "Template phai la file .xlsx de giu dung dinh dang"
-      });
-    }
 
     return res.json({
       uploadId: `upload-${Date.now()}`,
       files: {
-        template: toUploadDescriptor(template),
         pdfs: pdfs.map(toUploadDescriptor)
       }
     });
@@ -111,22 +104,13 @@ route.post(
 
 route.post(
   "/cms/upload",
-  upload.fields([
-    { name: "template", maxCount: 1 }
-  ]),
+  upload.none(),
   async (req, res) => {
-    const rawTemplateFile = req.files?.template?.[0];
     const passportText = String(req.body?.passportText ?? "").trim();
 
-    if (!passportText || !rawTemplateFile) {
+    if (!passportText) {
       return res.status(400).json({
-        message: "Can nhap danh sach passport va upload template.xlsx"
-      });
-    }
-
-    if (path.extname(rawTemplateFile.originalname).toLowerCase() !== ".xlsx") {
-      return res.status(400).json({
-        message: "Template phai la file .xlsx de giu dung dinh dang"
+        message: "Can nhap danh sach passport"
       });
     }
 
@@ -138,13 +122,12 @@ route.post(
       }),
       buffer: Buffer.from(passportText, "utf8")
     };
-    const templateFile = {
-      ...toUploadDescriptor(rawTemplateFile),
-      buffer: rawTemplateFile.buffer
-    };
 
     try {
-      const payload = await prepareCmsUploadPayload({ passportFile, templateFile });
+      const payload = await prepareCmsUploadPayload({
+        passportFile,
+        templateName: path.basename(defaultTemplatePath)
+      });
       return res.json(payload);
     } catch (error) {
       return res.status(400).json({ message: error.message });
@@ -183,24 +166,17 @@ route.post("/close-cms", async (_req, res) => {
 
 route.post("/start-job", async (req, res) => {
   const { files } = req.body ?? {};
-  if (!files?.template?.id) {
-    return res.status(400).json({
-      message: "Thieu thong tin file upload"
-    });
-  }
-
   if (!Array.isArray(files.pdfs) || files.pdfs.length === 0) {
     return res.status(400).json({
       message: "MVP hien tai can upload it nhat 1 file PDF visa"
     });
   }
 
-  const templateFile = takeUpload(files.template.id);
   const pdfFiles = files.pdfs
     .map((file) => takeUpload(file.id))
     .filter(Boolean);
 
-  if (!templateFile || pdfFiles.length !== files.pdfs.length) {
+  if (pdfFiles.length !== files.pdfs.length) {
     return res.status(400).json({
       message: "File tam da het han. Hay upload lai."
     });
@@ -211,8 +187,9 @@ route.post("/start-job", async (req, res) => {
 
   try {
     updateJob(job.id, { status: "processing", progress: 5 });
+    const templateBuffer = await readDefaultTemplateBuffer();
     const result = await runVisaJob({
-      templateBuffer: templateFile.buffer,
+      templateBuffer,
       pdfFiles,
       onProgress: (patch) => updateJob(job.id, patch)
     });
@@ -245,9 +222,9 @@ route.post("/start-job", async (req, res) => {
 route.post("/start-cms-job", async (req, res) => {
   const { files } = req.body ?? {};
 
-  if (!files?.passport?.id || !files?.template?.id) {
+  if (!files?.passport?.id) {
     return res.status(400).json({
-      message: "Thieu danh sach passport hoac template.xlsx cho luong CMS"
+      message: "Thieu danh sach passport cho luong CMS"
     });
   }
 
@@ -258,9 +235,8 @@ route.post("/start-cms-job", async (req, res) => {
   }
 
   const passportFile = takeUpload(files.passport.id);
-  const templateFile = takeUpload(files.template.id);
 
-  if (!passportFile || !templateFile) {
+  if (!passportFile) {
     return res.status(400).json({
       message: "File tam da het han. Hay upload lai."
     });
@@ -271,9 +247,10 @@ route.post("/start-cms-job", async (req, res) => {
 
   try {
     updateJob(job.id, { status: "queued", progress: 3 });
+    const templateBuffer = await readDefaultTemplateBuffer();
     const result = await runCmsAutomationJob({
       passportContent: passportFile.buffer.toString("utf8"),
-      templateBuffer: templateFile.buffer,
+      templateBuffer,
       onProgress: (patch) => updateJob(job.id, patch)
     });
 

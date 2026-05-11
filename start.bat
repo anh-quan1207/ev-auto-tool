@@ -24,6 +24,14 @@ if not exist "frontend\node_modules" (
   exit /b 1
 )
 
+if not exist "frontend\node_modules\pdf-lib" (
+  echo Frontend dang thieu thu vien moi de in/gop nhieu PDF.
+  echo Vui long bam install.bat lai mot lan, sau do bam start.bat.
+  echo.
+  pause
+  exit /b 1
+)
+
 echo Dang mo backend...
 start "EV Auto Backend" cmd /k "cd /d ""%~dp0backend"" && npm run dev"
 
